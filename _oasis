@@ -3,7 +3,7 @@ OASISFormat: 0.3
 Name:        omd
 Version:     0.8.1
 Synopsis:    A Markdown frontend in pure OCaml.
-Description: This Markdown library is implemented using only pure OCaml 
+Description: This Markdown library is implemented using only pure OCaml
   (including I/O operations provided by the standard OCaml compiler distribution).
   Omd targets the original Markdown with a few Github markdown features.
 Authors:     Philippe Wang <philippe.wang@gmail.com>
@@ -43,7 +43,7 @@ Test "cow"
 Executable "test_spec"
   Path:         tests
   BuildTools:   ocamlbuild
-  MainIs:  	test_spec.ml
+  MainIs:       test_spec.ml
   BuildDepends: omd
   CompiledObject: best
 

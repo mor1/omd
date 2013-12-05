@@ -51,7 +51,7 @@ and element = Omd_representation.element =
       verbatim from Markdown and may contain characters that must be
       escaped for HTML. *)
   | Code_block of name * string
-  (** [Code_block(lang, code)]: a code clock (e.g. indented by 4
+  (** [Code_block(lang, code)]: a code block (e.g. indented by 4
       spaces in the text).  The first parameter [lang] is the language
       if specified.  Beware that the [code] is taken verbatim from
       Markdown and may contain characters that must be escaped for

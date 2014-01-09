@@ -14,13 +14,32 @@ val default_language : string ref
     by default it is the empty string *)
 
 val html_of_md :
+  ?override:(Omd_representation.element -> string option) ->
   ?pindent:bool ->
   ?nl2br:bool ->
   ?cs:code_stylist ->
   Omd_representation.t -> string
 (** [html_of_md md] returns a string containing the HTML version of
     [md]. Note that [md] uses the internal representation of
-    Markdown. *)
+    Markdown.
+
+    The optional parameter [override] allows to override an precise
+    behaviour for a constructor of Omd_representation.element, 
+    as in the following example:
+
+let customized_to_html =
+  Omd.html_of_md 
+    ~override:(function
+        | Url (href,s,title) ->
+          Some("<a href='" 
+               ^ (Omd_utils.htmlentities ~md:true href) ^ "'"
+               ^ (if title <> "" then
+                    " title='" ^ (Omd_utils.htmlentities ~md:true title) ^ "'"
+                  else "")
+               ^ ">"
+               ^ Omd_backend.html_of_md s ^ " target='_blank'</a>")
+        | _ -> None)
+ *)
 
 val headers_of_md :
   Omd_representation.t ->
@@ -34,6 +53,7 @@ val headers_of_md :
     both the headers and the HTML version of [md]. *)
 
 val html_and_headers_of_md :
+  ?override:(Omd_representation.element -> string option) ->
   ?pindent:bool ->
   ?nl2br:bool ->
   ?cs:code_stylist ->
@@ -42,10 +62,18 @@ val html_and_headers_of_md :
     (Omd_representation.element * Omd_utils.StringSet.elt * string) list
 (** [html_and_headers_of_md md] is the same as [(html_of_md md,
     headers_of_md md)] except that it's two times faster.
-    If you need headers and html, don't use [html_of_md]
+    If you need both headers and html, don't use [html_of_md]
     and [headers_of_md] but this function instead.
-    Optional parameters
 *)
+
+val escape_markdown_characters : string -> string
+(** [escape_markdown_characters s] returns a string where
+    markdown-significant characters in [s] have been
+    backslash-escaped. Note that [escape_markdown_characters] takes a
+    "raw" string, therefore it doesn't have the whole context in which
+    the string appears, thus the escaping cannot really be
+    minimal. However the implementation tries to minimalise the extra
+    escaping. *)
 
 val text_of_md : Omd_representation.t -> string
 (** [text_of_md md] is basically the same as [html_of_md md] but without

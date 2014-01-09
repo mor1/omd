@@ -8,12 +8,29 @@
 include Omd_representation
 include Omd_backend
 
-let of_string ?extensions ?lang s =
-  let md = Omd_parser.parse ?extensions ?lang (Omd_lexer.lex s) in
-  Omd_parser.make_paragraphs md
+let of_string ?extensions:e ?default_lang:d s =
+  let module E = Omd_parser.Default_env(struct end) in
+  let module Parser = Omd_parser.Make(
+    struct
+      include E
+      let extensions = match e with Some x -> x | None -> E.extensions
+      let default_lang = match d with Some x -> x | None -> E.default_lang
+    end
+  ) in
+  let md =
+    Parser.parse (Omd_lexer.lex s)
+  in
+  Parser.make_paragraphs md
 
 
-let to_html : ?pindent:bool -> ?nl2br:bool -> ?cs:code_stylist -> t -> string =
+let to_html :
+  ?override:(Omd_representation.element -> string option) ->
+  ?pindent:bool ->
+  ?nl2br:bool ->
+  ?cs:code_stylist ->
+  t ->
+  string
+  =
   html_of_md
 
 let to_text : t -> string = text_of_md
@@ -21,7 +38,7 @@ let to_text : t -> string = text_of_md
 let to_markdown : t -> string = markdown_of_md
 
 let html_of_string (html:string) : string =
-  html_of_md (Omd_parser.parse (Omd_lexer.lex html))
+  html_of_md (Omd_parser.default_parse (Omd_lexer.lex html))
 
 
 let rec set_default_lang lang = function
@@ -53,8 +70,8 @@ let rec set_default_lang lang = function
   | Blockquote t :: tl -> Blockquote(set_default_lang lang t)
                          :: set_default_lang lang tl
   (* Elements that do not contain Markdown. *)
-  | (Text _|Code _|Code_block _|Br|Hr|NL|Ref _|Img_ref _|Html _
-     |Html_block _|Html_comment _|Img _|X _) as e :: tl ->
+  | (Text _|Code _|Code_block _|Br|Hr|NL|Ref _|Img_ref _|Raw _|Raw_block _
+    |Html _|Html_block _|Html_comment _|Img _|X _) as e :: tl ->
      e :: set_default_lang lang tl
   | [] -> []
 

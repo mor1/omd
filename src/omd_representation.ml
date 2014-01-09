@@ -60,6 +60,8 @@ type element =
   | Html of string
   | Html_block of string
   | Html_comment of string
+  | Raw of string
+  | Raw_block of string
   | Blockquote of t
   | Img of alt * src * title
   | X of
@@ -106,6 +108,8 @@ let rec loose_compare t1 t2 = match t1,t2 with
   | (NL as e1)::tl1, (NL as e2)::tl2
   | (Html _ as e1)::tl1, (Html _ as e2)::tl2
   | (Html_block _ as e1)::tl1, (Html_block _ as e2)::tl2
+  | (Raw _ as e1)::tl1, (Raw _ as e2)::tl2
+  | (Raw_block _ as e1)::tl1, (Raw_block _ as e2)::tl2
   | (Html_comment _ as e1)::tl1, (Html_comment _ as e2)::tl2
   | (Img _ as e1)::tl1, (Img _ as e2)::tl2
   | (Text _ as e1)::tl1, (Text _ as e2)::tl2
@@ -279,7 +283,8 @@ let rec normalise_md l =
     | [] -> []
     | NL::NL::NL::tl -> loop (NL::NL::tl)
     | Text t1::Text t2::tl -> loop (Text(t1^t2)::tl)
-    | NL::(((Paragraph _|Html_block _|H1 _|H2 _|H3 _|H4 _|H5 _|H6 _|Code_block _|Ol _|Ul _|Olp _|Ulp _)::_) as tl) -> loop tl
+    | NL::(((Paragraph _|Html_block _|Raw_block _|H1 _|H2 _|H3 _|H4 _|H5 _|H6 _
+            |Code_block _|Ol _|Ul _|Olp _|Ulp _)::_) as tl) -> loop tl
     | Paragraph[Text " "]::tl -> loop tl
     | Paragraph[]::tl -> loop tl
     | Paragraph(p)::tl -> Paragraph(loop p)::loop tl
@@ -308,6 +313,8 @@ let rec normalise_md l =
     | Html _
     | Html_block _
     | Html_comment _
+    | Raw _
+    | Raw_block _
     | Img _
     | X _ as v::tl -> v::loop tl
   in
@@ -317,3 +324,167 @@ let rec normalise_md l =
     a
   else
     normalise_md b
+
+
+
+let dummy_X =
+  X (object
+    method name = "dummy"
+    method to_html ?(indent=0) _ _ = None
+    method to_sexpr _ _ = None
+    method to_t _ = None
+  end)
+
+
+let rec visit f = function
+  | [] -> []
+  | Paragraph v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Paragraph(visit f v)::visit f tl
+    end
+  | H1 v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H1(visit f v)::visit f tl
+    end
+  | H2 v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H2(visit f v)::visit f tl
+    end
+  | H3 v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H3(visit f v)::visit f tl
+    end
+  | H4 v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H4(visit f v)::visit f tl
+    end
+  | H5 v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H5(visit f v)::visit f tl
+    end
+  | H6 v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> H6(visit f v)::visit f tl
+    end
+  | Emph v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Emph(visit f v)::visit f tl
+    end
+  | Bold v as e::tl -> 
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Bold(visit f v)::visit f tl
+    end
+  | Ul v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Ul(List.map (visit f) v)::visit f tl
+    end
+  | Ol v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Ol(List.map (visit f) v)::visit f tl
+    end
+  | Ulp v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Ulp(List.map (visit f) v)::visit f tl
+    end
+  | Olp v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Olp(List.map (visit f) v)::visit f tl
+    end
+  | Blockquote v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Blockquote(visit f v)::visit f tl
+    end
+  | Url(href,v,title) as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Url(href,visit f v,title)::visit f tl
+    end
+  | Text v as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Code _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Code_block _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Ref _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Img_ref _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Html _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Html_block _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Html_comment _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Raw _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Raw_block _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Img  _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | X  _ as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> e::visit f tl
+    end
+  | Br as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Br::visit f tl
+    end
+  | Hr as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> Hr::visit f tl
+    end
+  | NL as e::tl ->
+    begin match f e with
+      | Some(l) -> l@visit f tl
+      | None -> NL::visit f tl
+    end

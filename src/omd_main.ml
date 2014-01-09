@@ -5,10 +5,7 @@
 (* http://www.isc.org/downloads/software-support-policy/isc-license/   *)
 (***********************************************************************)
 
-(** This module implements an end-user interface for OMD.  It mainly
-    uses the module [Omd], which implements the main interface to the
-    library OMD. There are still a few uses of other modules from the
-    OMD library but this may change.
+(** This module implements an end-user interface for OMD.  
 
     Treatments that are not specific to Markdown (such as table of
     contents generation) are done here. If you want to build an
@@ -74,8 +71,6 @@ let nl2br = ref false
 
 let protect_html_comments = ref false
 
-let no_paragraphs = ref false
-
 let code_stylist =
   let module M = Map.Make(String) in
 object
@@ -127,6 +122,11 @@ let register_code_stylist_of_program x =
 let register_default_language l =
   Omd_backend.default_language := l
 
+
+(* HTML comments might contain some double-dash (--) that are not well
+    treated by HTML parsers. For instance "<!-- -- -->" should be
+    translated to "<!-- &#45;&#45; -->" when we want to ensure that
+    the generated HTML is correct! *)
 let patch_html_comments l =
   let htmlcomments s =
     let b = Buffer.create (String.length s) in
@@ -160,57 +160,40 @@ let patch_html_comments l =
 
 let tag_toc l =
   let open Omd_representation in
-  if !toc then
-    let rec loop = function
-      | Star::
-          Word "Table"::Space::
-          Word "of"::Space::
-          Word "contents"::Star::tl ->
-        Tag(fun r p l ->
-          Some(X(
-                object
-                  (* [shield] is used to prevent endless loops.
-                     If one wants to use system threads at some point,
-                     and calls methods of this object  concurrently,
-                     then there is a real problem. *)
-                  val mutable shield = false
-                  method name="toc"
-                  method to_html ?indent f md =
-                    if shield || not !toc then
-                      None
-                    else
-                      begin
-                        shield <- true;
-                        let r = f (Omd.toc md) in
-                        shield <- false;
-                        Some r
-                      end
-                  method to_sexpr f md =
-                    if shield || not !toc then
-                      None
-                    else
-                      begin
-                        shield <- true;
-                        let r = f (Omd.toc md) in
-                        shield <- false;
-                        Some r
-                      end
-                  method to_t md =
-                    if shield || not !toc then
-                      None
-                    else
-                      begin
-                        shield <- true;
-                        let r = (Omd.toc md) in
-                        shield <- false;
-                        Some r
-                      end
-                end)::r,p,l)) :: loop tl
-      | e::tl -> e::loop tl
-      | [] -> []
-    in loop l
-  else
-    l
+  let x =
+    let open Printf in
+    object(self)
+      (* [shield] is used to prevent endless loops.
+         If one wants to use system threads at some point,
+         and calls methods of this object concurrently,
+         then there is a real problem. *)
+      val remove = fun e md ->
+        visit
+          (function X(v) when v==e-> Some[] | _ -> None)
+          md
+      method name = "toc"
+      method to_html ?indent f md =
+        let r = f (Omd.toc(remove self md)) in
+        Some r
+      method to_sexpr f md =
+        let r = f (Omd.toc(remove self md)) in
+        Some r
+      method to_t md =
+        let r = (Omd.toc(remove self md)) in
+        Some r
+    end
+  in
+  let rec loop = function
+    | Star::
+      Word "Table"::Space::
+      Word "of"::Space::
+      Word "contents"::Star::tl ->
+      Tag(fun r p l ->
+          Some(X(x)::r,p,l)) :: loop tl
+    | e::tl -> e::loop tl
+    | [] -> []
+  in loop l
+
 
 
 let split_comma_int_list s =
@@ -230,6 +213,29 @@ let split_comma_int_list s =
       List.rev !l
   )
 
+let omd_gh_uemph_or_bold_style =
+  let module E = Omd_parser.Default_env(struct end) in
+  ref E.gh_uemph_or_bold_style
+let omd_blind_html =
+  let module E = Omd_parser.Default_env(struct end) in
+  ref E.blind_html
+let omd_strict_html = 
+  let module E = Omd_parser.Default_env(struct end) in
+  ref E.strict_html
+
+let list_html_tags ~inline =
+  let module E = Omd_parser.Default_env(struct end) in
+  let module Parser = Omd_parser.Make(E)
+  in
+  if inline then
+    Omd_utils.StringSet.iter
+      (fun e -> print_string e; print_char '\n')
+      Parser.inline_htmltags_set
+  else
+    Omd_utils.StringSet.iter
+      (fun e -> print_string e; print_char '\n')
+      Parser.htmltags_set
+
 let main () =
   let input = ref []
   and output = ref ""
@@ -241,7 +247,7 @@ let main () =
         "file.html Specify the output file (default is stdout).";
         "--", Rest(fun s -> input := s :: !input),
         " Consider all remaining arguments as input file names.";
-        "-u", Clear(Omd_parser.gh_uemph_or_bold_style),
+        "-u", Clear(omd_gh_uemph_or_bold_style),
         " Use standard Markdown style for emph/bold when using `_'.";
         "-c", Unit(fun () -> preprocess_functions += remove_endline_comments),
         " Ignore lines that start with `!!!' (3 or more exclamation points).";
@@ -266,12 +272,16 @@ let main () =
         "ext Activate extension ext (not yet implemented).";
         "-l", Unit ignore,
         " List available extensions ext (not yet implemented).";
-        "-b", Set(Omd_parser.blind_html),
+        "-b", Set(omd_blind_html),
         " Don't check validity of HTML tag names.";
-        "-s", Set(Omd_parser.strict_html),
+        "-s", Set(omd_strict_html),
         " (might not work as expected yet) Block HTML only in block HTML, \
            inline HTML only in inline HTML \
            (semantics undefined if use both -b and -s).";
+        "-LHTML", Unit(fun () -> list_html_tags ~inline:false; exit 0),
+        " List all known HTML tags";
+        "-LHTMLi", Unit(fun () -> list_html_tags ~inline:true; exit 0),
+        " List all known inline HTML tags";
         "-version", Unit(fun () -> print_endline "This is version VERSION.";
                                 exit 0), "Print version.";
       ])
@@ -297,8 +307,17 @@ let main () =
       done; assert false
     with End_of_file ->
       let lexed = Omd_lexer.lex (Buffer.contents b) in
-      let preprocessed = preprocess lexed in
-      let parsed1 = Omd_parser.parse preprocessed in
+      let preprocessed = preprocess (if !toc then tag_toc lexed else lexed) in
+      let module E = Omd_parser.Default_env(struct end) in
+      let module Parser = Omd_parser.Make(
+        struct
+          include E
+          let gh_uemph_or_bold_style = !omd_gh_uemph_or_bold_style
+          let blind_html = !omd_blind_html
+          let strict_html = !omd_strict_html
+        end)
+      in
+      let parsed1 = Parser.parse preprocessed in
       let parsed2 =
         if !protect_html_comments then
           patch_html_comments parsed1
@@ -308,20 +327,33 @@ let main () =
       let parsed = parsed2 in
       let o1 = (* make either TOC or paragraphs, or leave as it is *)
         (if !otoc then Omd.toc ~start:!toc_start ~depth:!toc_depth
-         else Omd_parser.make_paragraphs)
+         else Parser.make_paragraphs)
           parsed in
       let o2 = (* output either Text or HTML, or markdown *)
-        (if !notags then to_text
-         else if !omarkdown then to_markdown
-         else to_html ~pindent:true ~nl2br:false ~cs:code_stylist#style)
-          o1
+        if !notags then to_text o1
+        else if !omarkdown then to_markdown o1
+        else if !toc && not !otoc then
+          to_html
+            ~pindent:true ~nl2br:false ~cs:code_stylist#style
+            (* FIXME: this is a quick fix for -toc which doesn't work
+               if to_html is directly applied to o1, and that seems to have 
+               something to do with Parser.make_paragraphs, which seems to 
+               prevent tag_toc from working properly when using to_html!
+            *)
+            (Parser.make_paragraphs(Parser.parse(Omd_lexer.lex(to_markdown o1))))
+        else
+          to_html
+            ~pindent:true ~nl2br:false ~cs:code_stylist#style
+            (* The normal behaviour is to convert directly, like this. *)
+            o1
       in
         output_string output o2;
         flush output;
         if Omd_utils.debug then
           print_endline
             (Omd_backend.sexpr_of_md
-               (Omd_parser.parse (preprocess(Omd_lexer.lex (Buffer.contents b)))));
+               (Omd_parser.default_parse
+                  (preprocess(Omd_lexer.lex (Buffer.contents b)))));
   )
     input_files
 

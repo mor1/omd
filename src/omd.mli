@@ -67,6 +67,10 @@ and element = Omd_representation.element =
   | Html_block of string
   | Html_comment of string
   (** An HTML comment, including "<!--" and "-->". *)
+  | Raw of string
+  (** Raw: something that shall never be converted *)
+  | Raw_block of string
+  (** Raw_block: a block with contents that shall never be converted *)
   | Blockquote of t  (** Quoted block *)
   | Img of alt * src * title
   | X of (< (* extension of [element]. *)
@@ -104,7 +108,7 @@ type code_stylist = lang:string -> string -> string
 (** {2 Input and Output} *)
 
 val of_string : ?extensions:Omd_representation.extensions ->
-                ?lang: name ->
+                ?default_lang: name ->
                 string -> t
 (** [of_string s] returns the Markdown representation of the string
     [s].
@@ -120,7 +124,9 @@ val set_default_lang : name -> t -> t
     language of all [Code] or [Code_block] with an empty language is
     set to [lang]. *)
 
-val to_html : ?pindent:bool -> ?nl2br:bool -> ?cs:code_stylist -> t -> string
+val to_html :
+  ?override:(Omd_representation.element -> string option) ->
+  ?pindent:bool -> ?nl2br:bool -> ?cs:code_stylist -> t -> string
 (** Translate markdown representation into raw HTML.  If you need a
     full HTML representation, you mainly have to figure out how to
     convert [Html of string] and [Html_block of string]

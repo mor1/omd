@@ -1024,7 +1024,7 @@ struct
               Some((title::r), [Newline], tl)
           end
         | _ ->
-          if debug then
+           if debug then
             eprintf "Warning: Omd_parser.tag__maybe_h1 is wrongly used \
                      (p=%S)!\n"
               (Omd_lexer.string_of_tokens p);
@@ -3062,7 +3062,7 @@ let read_until_space ?(bq=false) ?(no_nl=false) l =
     | ([]|[Newline|Newlines _]),
       (Lessthan as t)
       ::(Word(tagname)
-         ::(Space|Spaces _|Greaterthan|Greaterthans _ as x)
+         ::(Space|Spaces _|Greaterthan|Greaterthans _ as aftertagname)
          ::tl as tlx) ->
       if StringSet.mem tagname inline_htmltags_set then
         main_loop_rev r [Word ""] lexemes
@@ -3099,15 +3099,15 @@ let read_until_space ?(bq=false) ?(no_nl=false) l =
             | [] ->
               List.rev accu, []
           in
-          loop [x;Word(tagname);Lessthan] 0 tl
+          loop [aftertagname;Word(tagname);Lessthan] 0 tl
         in
         let html, tl = read_html() in
         let html = Omd_lexer.string_of_tokens html in
         let attributes = Omd_utils.extract_html_attributes html in
         if List.mem ("media:type","text/omd") attributes then
           let innerHTML = Omd_utils.extract_inner_html html in
-          let l_innerHTML = Omd_lexer.lex innerHTML in
-          let parsed_innerHTML = main_loop [] [] l_innerHTML in
+          let l_innerHTML = tag_setext main_loop (Omd_lexer.lex innerHTML) in
+          let parsed_innerHTML = make_paragraphs(main_loop [] [] l_innerHTML) in
           let s_attributes =
             List.fold_left
               (fun r -> function
@@ -3121,14 +3121,24 @@ let read_until_space ?(bq=false) ?(no_nl=false) l =
               ""
               attributes
           in
-          let html =
-            Printf.sprintf "<%s%s>%s</%s>"
-              tagname
-              s_attributes
-              (Omd_backend.html_of_md parsed_innerHTML)
-              tagname
+          (* Here we have to delay the conversion to HTML because
+             the inner markdown might use some references that are
+             defined further in the document, hence the use of 
+             the extension constructor [X]. *)
+          let x = object
+            val f = fun convert ->
+              Printf.sprintf "<%s%s>%s</%s>"
+                tagname
+                s_attributes
+                (convert parsed_innerHTML)
+                tagname
+            method name = "Html_block"
+            method to_html ?indent to_html _t = Some(f to_html)
+            method to_sexpr to_sexpr _t = Some(f to_sexpr)
+            method to_t _t = Some([Html_block(f Omd_backend.html_of_md)])
+          end
           in
-          main_loop_rev (Html_block html :: r) [Greaterthan] tl
+          main_loop_rev (X(x) :: r) [Greaterthan] tl
         else            
           main_loop_rev (Html_block html :: r) [Greaterthan] tl
 
